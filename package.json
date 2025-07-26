@@ -1,25 +1,19 @@
 {
-  "dependencies": {
-    "axios": "^1.11.0",
-    "cheerio": "^1.1.2",
-    "discord.js": "^14.21.0"
-  },
-  "name": "bdo-master--bot-",
+  "name": "projets",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "main": "bot.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Hiuras/BDO-MASTER--BOT-.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Hiuras/BDO-MASTER--BOT-/issues"
-  },
-  "homepage": "https://github.com/Hiuras/BDO-MASTER--BOT-#readme"
+  "description": "",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "cheerio": "^1.1.2",
+    "discord.js": "^14.21.0",
+    "dotenv": "^17.2.1",
+    "node-fetch": "^3.3.2"
+  }
 }
