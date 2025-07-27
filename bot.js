@@ -11,71 +11,126 @@ const {
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const Parser = require('rss-parser');
-const parser = new Parser({
-  customFields: {
-    item: ['guid']
-  },
-  xml2js: {
-    strict: false  // désactive le parsing strict
-  }
-});
 require('dotenv').config({ path: './token.env' });
-console.log (DISCORD_TOKEN = process.env.DISCORD_TOKEN);
 
-// Chargement config + réactions
+// --- Chemins fichiers ---
 const configPath = path.resolve(__dirname, 'config.json');
-let config = {};
-try {
-  config = JSON.parse(fs.readFileSync(configPath));
-} catch {
-  config = {};
-}
-
 const reactionsFile = path.resolve(__dirname, 'reactionsData.json');
-let reactionsData = {};
-try {
-  reactionsData = JSON.parse(fs.readFileSync(reactionsFile));
-} catch {
-  reactionsData = {};
-}
-function saveReactions() {
-  fs.writeFileSync(reactionsFile, JSON.stringify(reactionsData, null, 2));
-}
-
-let usersData = new Set();
 const usersFile = path.resolve(__dirname, 'users.json');
 
-try {
-  const usersJson = fs.readFileSync(usersFile);
-  usersData = new Set(JSON.parse(usersJson));
-} catch {
-  usersData = new Set();
+// --- Données en mémoire ---
+let configsByGuild = {};
+let reactionsByGuild = {};
+let usersByGuild = {};
+
+// --- Chargement initial des fichiers ---
+function loadJSON(filePath, defaultValue) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath));
+  } catch {
+    return defaultValue;
+  }
+}
+
+configsByGuild = loadJSON(configPath, {});
+reactionsByGuild = loadJSON(reactionsFile, {});
+const rawUsers = loadJSON(usersFile, {});
+
+// Convertir listes en Set pour usersByGuild
+for (const guildId in rawUsers) {
+  usersByGuild[guildId] = new Set(rawUsers[guildId]);
+}
+
+// --- Fonctions d'accès par guild ---
+function getConfig(guildId) {
+  if (!configsByGuild[guildId]) configsByGuild[guildId] = {};
+  return configsByGuild[guildId];
+}
+
+function getReactionsData(guildId) {
+  if (!reactionsByGuild[guildId]) reactionsByGuild[guildId] = {};
+  return reactionsByGuild[guildId];
+}
+
+function getUsersData(guildId) {
+  if (!usersByGuild[guildId]) usersByGuild[guildId] = new Set();
+  return usersByGuild[guildId];
+}
+
+// --- Fonctions de sauvegarde ---
+function saveConfigs() {
+  fs.writeFileSync(configPath, JSON.stringify(configsByGuild, null, 2));
+}
+
+function saveReactions() {
+  fs.writeFileSync(reactionsFile, JSON.stringify(reactionsByGuild, null, 2));
 }
 
 function saveUsers() {
-  fs.writeFileSync(usersFile, JSON.stringify([...usersData], null, 2));
+  const objToSave = {};
+  for (const guildId in usersByGuild) {
+    objToSave[guildId] = [...usersByGuild[guildId]];
+  }
+  fs.writeFileSync(usersFile, JSON.stringify(objToSave, null, 2));
 }
 
-function updateBotStatus() {
-  const totalUsers = usersData.size;
+// --- Mise à jour du statut du bot par nombre total d'utilisateurs (sur tous les serveurs) ---
+function updateBotStatus(client) {
+  let totalUsers = 0;
+  for (const guildId in usersByGuild) {
+    totalUsers += usersByGuild[guildId].size;
+  }
   client.user.setPresence({
     activities: [{
       name: `${totalUsers} utilisateurs 🧙`,
-      type: 3 // "Écoute" — tu peux aussi mettre 0 = "Joue à", 2 = "Regarde"
+      type: 3 // "Écoute"
     }],
     status: 'online'
   });
 }
 
-const dungeons = [
-  { name: 'Atoraxxion: Vahmalkea'},
-  { name: 'Atoraxxion: Sycrakea'},
-  { name: 'Atoraxxion: Yolunakea'},
-  { name: "Atoraxxion: Orzekea" }
+// --- Donjons ---
+const dungeonsList = [
+  '📘 **1. Vahmalkea** *(Atoraxxion - Valmakea)*',
+  '💧 **2. Sycrakea** *(Atoraxxion - Sycrakea)*',
+  '🔥 **3. Yolunakea** *(Atoraxxion - Yolunkea)*',
+  '⚙️ **4. Orzekea** *(Atoraxxion - Orzekea)*'
 ];
 
-// Initialisation du client Discord
+// --- Construction de l'embed donjon ---
+function buildDungeonEmbed(guildId, datetime = '') {
+  const reactionsData = getReactionsData(guildId);
+
+  const canUsers = [];
+  const cantUsers = [];
+
+  for (const userId in reactionsData) {
+    const entry = reactionsData[userId];
+    if (entry.canDoDungeons === true) canUsers.push(`<@${userId}>`);
+    else if (entry.canDoDungeons === false) cantUsers.push(`<@${userId}>`);
+  }
+
+  const rolePing = `<@&1275693513085943862>`; // Remplace par le vrai rôle Atoraxion sur ton serveur
+
+  const participantsText =
+    `__**📋 Participants :**__\n\n` +
+    `✅ **Disponibles** (${canUsers.length})\n${canUsers.length ? canUsers.join(', ') : 'Aucun'}\n\n` +
+    `❌ **Indisponibles** (${cantUsers.length})\n${cantUsers.length ? cantUsers.join(', ') : 'Aucun'}`;
+
+  const dateLine = datetime ? `🕒 **Date & Heure :** \`${datetime}\`\n` : '';
+
+  const embed = new EmbedBuilder()
+    .setTitle('🏰 Donjons Atoraxxion - Planification')
+    .setColor('#2F3136')
+    .setDescription(
+      `${rolePing}\n\n__**📌 Liste des Donjons :**__\n${dungeonsList.join('\n')}\n\n${dateLine}${participantsText}`
+    )
+    .setFooter({ text: 'Réagis avec ✅ si tu es dispo ou ❌ si tu ne l’es pas.' });
+
+  return embed;
+}
+
+// --- Initialisation client Discord ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -86,12 +141,12 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-client.once('ready', async () => {
+client.once('ready', () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
-  updateBotStatus();
-})
+  updateBotStatus(client);
+});
 
-// Définition des commandes slash à déployer
+// --- Commandes slash ---
 const commands = [
   new SlashCommandBuilder()
     .setName('postdungeons')
@@ -133,7 +188,7 @@ const commands = [
     )
 ].map(cmd => cmd.toJSON());
 
-// Déploiement des commandes slash
+// --- Déploiement commandes ---
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async () => {
   try {
@@ -148,64 +203,30 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   }
 })();
 
-// Fonction pour construire l'embed des donjons avec participants
-function buildDungeonEmbed(datetime = '') {
-  const canUsers = [];
-  const cantUsers = [];
-
-  for (const userId in reactionsData) {
-    const entry = reactionsData[userId];
-    if (entry.canDoDungeons === true) canUsers.push(`<@${userId}>`);
-    else if (entry.canDoDungeons === false) cantUsers.push(`<@${userId}>`);
-  }
-
-  // Texte des donjons
-  const donjonLines = [
-    '📘 **1. Vahmalkea** *(Atoraxxion - Valmakea)*',
-    '💧 **2. Sycrakea** *(Atoraxxion - Sycrakea)*',
-    '🔥 **3. Yolunakea** *(Atoraxxion - Yolunkea)*',
-    '⚙️ **4. Orzekea** *(Atoraxxion - Orzekea)*'
-  ].join('\n');
-
-  // Ping du rôle Atoraxion
-  const rolePing = `<@&1275693513085943862>`; // Remplace ROLE_ID_ATORAXION par l’ID réel du rôle
-
-  // Participants
-  const participantsText =
-    `__**📋 Participants :**__\n\n` +
-    `✅ **Disponibles** (${canUsers.length})\n${canUsers.length ? canUsers.join(', ') : 'Aucun'}\n\n` +
-    `❌ **Indisponibles** (${cantUsers.length})\n${cantUsers.length ? cantUsers.join(', ') : 'Aucun'}`;
-
-  // Date
-  const dateLine = datetime ? `🕒 **Date & Heure :** \`${datetime}\`\n` : '';
-
-  // Construction de l'embed
-  const embed = new EmbedBuilder()
-    .setTitle('🏰 Donjons Atoraxxion - Planification')
-    .setColor('#2F3136')
-    .setDescription(
-      `${rolePing}\n\n__**📌 Liste des Donjons :**__\n${donjonLines}\n\n${dateLine}${participantsText}`
-    )
-    .setFooter({ text: 'Réagis avec ✅ si tu es dispo ou ❌ si tu ne l’es pas.' });
-
-  return embed;
-}
-
-
-// Interaction / Commandes
+// --- Gestion des interactions (commandes) ---
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
 
-usersData.add(interaction.user.id);
-saveUsers();
-updateBotStatus();
+  const guildId = interaction.guildId;
+  if (!guildId) {
+    await interaction.reply({ content: 'Cette commande doit être utilisée dans un serveur.', ephemeral: true });
+    return;
+  }
+
+  const config = getConfig(guildId);
+  const reactionsData = getReactionsData(guildId);
+  const usersData = getUsersData(guildId);
+
+  // Ajouter utilisateur à la liste globale users
+  usersData.add(interaction.user.id);
+  saveUsers();
+  updateBotStatus(client);
 
   const { commandName } = interaction;
 
   if (commandName === 'joke') {
-    const url = "https://blague-api.vercel.app/api?mode=global";
     try {
-      const response = await axios.get(url, { timeout: 5000 });
+      const response = await axios.get("https://blague-api.vercel.app/api?mode=global", { timeout: 5000 });
       const data = response.data;
       const blague = data.blagues || data.blague || data.setup || "Pas de blague dispo.";
       const reponse = data.reponses || data.reponse || data.punchline || "";
@@ -215,14 +236,76 @@ updateBotStatus();
     }
   }
   else if (commandName === 'setdungeonchannel') {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      await interaction.reply({ content: 'Tu dois être admin pour faire ça.', ephemeral: true });
+  if (!interaction.guild) {
+    await interaction.reply({ content: "Cette commande ne peut être utilisée que dans un serveur.", ephemeral: true });
+    return;
+  }
+
+  const member = interaction.member;
+  if (!member.permissionsIn(interaction.channel).has(PermissionsBitField.Flags.Administrator)) {
+    await interaction.reply({ content: 'Tu dois être admin pour faire ça.', ephemeral: true });
+    return;
+  }
+
+  const channel = interaction.options.getChannel('channel');
+  config.dungeonChannelId = channel.id;
+  saveConfigs();
+  await interaction.reply(`📌 Channel donjon défini sur ${channel.toString()}`);
+}
+  else if (commandName === 'postdungeons') {
+    if (!config.dungeonChannelId) {
+      await interaction.reply({ content: 'Le channel de donjon n\'est pas défini. Utilise /setdungeonchannel.', ephemeral: true });
       return;
     }
-    const channel = interaction.options.getChannel('channel');
-    config.dungeonChannelId = channel.id;
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    await interaction.reply(`📌 Channel donjon défini sur : ${channel}`);
+    const channel = await client.channels.fetch(config.dungeonChannelId).catch(() => null);
+    if (!channel) {
+      await interaction.reply({ content: 'Le channel configuré est introuvable ou inaccessible.', ephemeral: true });
+      return;
+    }
+
+    const datetime = interaction.options.getString('datetime') || '';
+    const embed = buildDungeonEmbed(guildId, datetime);
+
+    try {
+      const msg = await channel.send({ embeds: [embed] });
+
+      // Remise à zéro des réactions existantes
+      reactionsByGuild[guildId] = {};
+
+      // Ajouter réactions
+      await msg.react('✅');
+      await msg.react('❌');
+
+      // Sauvegarder messageId
+      config.dungeonMessageId = msg.id;
+      saveConfigs();
+      saveReactions();
+
+      await interaction.reply({ content: `Donjons postés dans ${channel.toString()}`, ephemeral: true });
+    } catch (err) {
+      await interaction.reply({ content: 'Erreur lors de l\'envoi du message.', ephemeral: true });
+    }
+  }
+  else if (commandName === 'dungeonstatus') {
+    const embed = buildDungeonEmbed(guildId);
+    await interaction.reply({ embeds: [embed], ephemeral: false });
+  }
+  else if (commandName === 'clear') {
+  if (!interaction.member.permissionsIn(interaction.channel).has(PermissionsBitField.Flags.ManageMessages)) {
+      await interaction.reply({ content: 'Tu dois avoir la permission de gérer les messages pour faire ça.', ephemeral: true });
+      return;
+    }
+    const nombre = interaction.options.getInteger('nombre');
+    if (nombre < 1 || nombre > 100) {
+      await interaction.reply({ content: 'Tu peux supprimer entre 1 et 100 messages.', ephemeral: true });
+      return;
+    }
+    try {
+      await interaction.channel.bulkDelete(nombre, true);
+      await interaction.reply({ content: `🧹 ${nombre} messages supprimés.`, ephemeral: true });
+    } catch {
+      await interaction.reply({ content: 'Impossible de supprimer les messages.', ephemeral: true });
+    }
   }
   else if (commandName === 'setupdateschannel') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -231,138 +314,111 @@ updateBotStatus();
     }
     const channel = interaction.options.getChannel('channel');
     config.updatesChannelId = channel.id;
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    await interaction.reply(`📌 Channel mises à jour défini sur : ${channel}`);
-  }
-  else if (commandName === 'postdungeons') {
-    if (!config.dungeonChannelId) {
-      await interaction.reply({ content: 'Aucun channel donjon configuré. Utilise /setdungeonchannel.', ephemeral: true });
-      return;
-    }
-    const channel = client.channels.cache.get(config.dungeonChannelId);
-    if (!channel) {
-      await interaction.reply({ content: 'Le channel configuré est introuvable.', ephemeral: true });
-      return;
-    }
-    const datetime = interaction.options.getString('datetime') || '';
-
-    // Clear reactionsData à chaque nouveau post pour repartir à zéro
-    reactionsData = {};
-    saveReactions();
-
-    const embed = buildDungeonEmbed(datetime);
-    const dungeonMessage = await channel.send({ embeds: [embed] });
-    await dungeonMessage.react('✅');
-    await dungeonMessage.react('❌');
-
-    config.dungeonMessageId = dungeonMessage.id;
-    config.dungeonDateTime = datetime;
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-
-    await interaction.reply({ content: 'Tableau des donjons posté !', ephemeral: true });
-  }
-  else if (commandName === 'dungeonstatus') {
-    const canUsers = [];
-    const cantUsers = [];
-
-    for (const userId in reactionsData) {
-      const entry = reactionsData[userId];
-      const member = await interaction.guild.members.fetch(userId).catch(() => null);
-      const displayName = member ? member.displayName : `Utilisateur inconnu (${userId})`;
-
-      if (entry.canDoDungeons === true) {
-        canUsers.push(`- ${displayName}`);
-      } else if (entry.canDoDungeons === false) {
-        cantUsers.push(`- ${displayName}`);
-      }
-    }
-
-    const maxCan = canUsers.slice(0, 5);
-    const statusMessage =
-      `📋 **Statut des donjons**\n\n` +
-      `✅ Peuvent faire (${maxCan.length}) :\n${maxCan.join('\n') || 'Aucun'}\n\n` +
-      `❌ Ne peuvent pas faire (${cantUsers.length}) :\n${cantUsers.join('\n') || 'Aucun'}`;
-
-    await interaction.reply(statusMessage);
-  }
-  else if (commandName === 'clear') {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-      await interaction.reply({ content: '❌ Tu n\'as pas la permission d\'utiliser cette commande.', ephemeral: true });
-      return;
-    }
-    const amount = interaction.options.getInteger('nombre');
-    if (amount < 1 || amount > 100) {
-      await interaction.reply({ content: '⚠️ Utilisation : `/clear nombre` entre 1 et 100', ephemeral: true });
-      return;
-    }
-
-    try {
-      const deleted = await interaction.channel.bulkDelete(amount, true);
-      await interaction.reply({ content: `🗑️ ${deleted.size} messages supprimés !`, ephemeral: true });
-    } catch (error) {
-      console.error(error);
-      await interaction.reply({ content: 'Erreur lors de la suppression des messages.', ephemeral: true });
-    }
+    saveConfigs();
+    await interaction.reply(`📌 Channel mises à jour défini sur ${channel.toString()}`);
   }
 });
 
-// Événements de réaction pour mise à jour dynamique
-
-async function updateDungeonEmbed(message) {
-  try {
-    const datetime = config.dungeonDateTime || '';
-    const newEmbed = buildDungeonEmbed(datetime);
-    await message.edit({ embeds: [newEmbed] });
-  } catch (error) {
-    console.error('Erreur mise à jour embed donjon:', error);
-  }
-}
-
+// --- Gestion des réactions ---
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
-
-  usersData.add(user.id);
-saveUsers();
-updateBotStatus();
-
-  // Si message donjon
-  if (reaction.message.id !== config.dungeonMessageId) return;
-  if (reaction.emoji.name !== '✅' && reaction.emoji.name !== '❌') return;
-
-  // Mettre à jour le statut du joueur
-  reactionsData[user.id] = { canDoDungeons: reaction.emoji.name === '✅' };
-  saveReactions();
-
-  // Supprimer l'autre réaction si elle existe (exclu)
-  try {
-    const userReactions = reaction.message.reactions.cache.filter(r => r.users.cache.has(user.id));
-    for (const r of userReactions.values()) {
-      if (r.emoji.name !== reaction.emoji.name) {
-        await r.users.remove(user.id);
-      }
+  if (reaction.partial) {
+    try {
+      await reaction.fetch();
+    } catch {
+      return;
     }
-  } catch (err) {
-    console.error('Erreur suppression réaction:', err);
   }
+  const message = reaction.message;
+  if (!message.guild) return;
 
-  // Mettre à jour l'embed donjon
-  updateDungeonEmbed(reaction.message);
+  const guildId = message.guild.id;
+  const config = getConfig(guildId);
+  if (!config.dungeonMessageId) return;
+  if (message.id !== config.dungeonMessageId) return;
+
+  const emoji = reaction.emoji.name;
+  if (emoji !== '✅' && emoji !== '❌') return;
+
+  const reactionsData = getReactionsData(guildId);
+  const usersData = getUsersData(guildId);
+
+  // Ajout ou mise à jour du statut utilisateur
+  reactionsData[user.id] = { canDoDungeons: emoji === '✅' };
+  usersData.add(user.id);
+
+  saveReactions();
+  saveUsers();
+  updateBotStatus(client);
+
+  // Mettre à jour l'embed
+  try {
+    const channel = await client.channels.fetch(config.dungeonChannelId);
+    if (!channel) return;
+
+    const msg = await channel.messages.fetch(config.dungeonMessageId);
+    if (!msg) return;
+
+    const embed = buildDungeonEmbed(guildId);
+    await msg.edit({ embeds: [embed] });
+  } catch {
+    // Ne rien faire en cas d'erreur
+  }
 });
 
 client.on('messageReactionRemove', async (reaction, user) => {
   if (user.bot) return;
+  if (reaction.partial) {
+    try {
+      await reaction.fetch();
+    } catch {
+      return;
+    }
+  }
+  const message = reaction.message;
+  if (!message.guild) return;
 
-  if (reaction.message.id !== config.dungeonMessageId) return;
-  if (reaction.emoji.name !== '✅' && reaction.emoji.name !== '❌') return;
+  const guildId = message.guild.id;
+  const config = getConfig(guildId);
+  if (!config.dungeonMessageId) return;
+  if (message.id !== config.dungeonMessageId) return;
 
-  // Retirer la donnée de réaction
+  const emoji = reaction.emoji.name;
+  if (emoji !== '✅' && emoji !== '❌') return;
+
+  const reactionsData = getReactionsData(guildId);
+  const usersData = getUsersData(guildId);
+
+  // Suppression de la donnée utilisateur si la réaction correspondante est enlevée
   if (reactionsData[user.id]) {
+    // Si l'utilisateur a encore une autre réaction, on garde
+    // Sinon, supprimer l'entrée
+
+    // Pour simplifier, on supprime l'entrée si cette réaction était la seule:
+    // Ici, l'entrée a un seul booléen, donc on supprime.
     delete reactionsData[user.id];
-    saveReactions();
   }
 
-  updateDungeonEmbed(reaction.message);
+  saveReactions();
+
+  // Ne pas supprimer userId de usersData (historique), mais tu peux décider sinon.
+
+  updateBotStatus(client);
+
+  // Mettre à jour l'embed
+  try {
+    const channel = await client.channels.fetch(config.dungeonChannelId);
+    if (!channel) return;
+
+    const msg = await channel.messages.fetch(config.dungeonMessageId);
+    if (!msg) return;
+
+    const embed = buildDungeonEmbed(guildId);
+    await msg.edit({ embeds: [embed] });
+  } catch {
+    // Ne rien faire en cas d'erreur
+  }
 });
 
-// Connexion du bot
+// --- Connexion ---
 client.login(process.env.DISCORD_TOKEN);
