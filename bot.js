@@ -217,11 +217,6 @@ client.on('interactionCreate', async interaction => {
   const reactionsData = getReactionsData(guildId);
   const usersData = getUsersData(guildId);
 
-  // Ajouter utilisateur à la liste globale users
-  usersData.add(interaction.user.id);
-  saveUsers();
-  updateBotStatus(client);
-
   const { commandName } = interaction;
 
   if (commandName === 'joke') {
@@ -264,6 +259,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     const datetime = interaction.options.getString('datetime') || '';
+    config.dungeonDatetime = datetime;
     const embed = buildDungeonEmbed(guildId, datetime);
 
     try {
@@ -327,6 +323,10 @@ client.on('messageReactionAdd', async (reaction, user) => {
       await reaction.fetch();
     } catch {
       return;
+        // Ajouter utilisateur à la liste globale users
+usersData.add(interaction.user.id);
+saveUsers();
+updateBotStatus(client);
     }
   }
   const message = reaction.message;
@@ -366,6 +366,51 @@ client.on('messageReactionAdd', async (reaction, user) => {
   }
 });
 
+client.on('messageReactionAdd', async (reaction, user) => {
+  if (user.bot) return;
+  if (reaction.partial) {
+    try {
+      await reaction.fetch();
+    } catch {
+      return;
+    }
+  }
+  const message = reaction.message;
+  if (!message.guild) return;
+
+  const guildId = message.guild.id;
+  const config = getConfig(guildId);
+  if (!config.dungeonMessageId || message.id !== config.dungeonMessageId) return;
+
+  const emoji = reaction.emoji.name;
+  if (emoji !== '✅' && emoji !== '❌') return;
+
+  const reactionsData = getReactionsData(guildId);
+  const usersData = getUsersData(guildId);
+
+  // Ajout ou mise à jour du statut utilisateur
+  reactionsData[user.id] = { canDoDungeons: emoji === '✅' };
+  usersData.add(user.id);
+
+  saveReactions();
+  saveUsers();
+  updateBotStatus(client);
+
+  // Mettre à jour l'embed avec la date mémorisée
+  try {
+    const channel = await client.channels.fetch(config.dungeonChannelId);
+    if (!channel) return;
+
+    const msg = await channel.messages.fetch(config.dungeonMessageId);
+    if (!msg) return;
+
+    const embed = buildDungeonEmbed(guildId, config.dungeonDatetime || '');
+    await msg.edit({ embeds: [embed] });
+  } catch {
+    // Silencieux
+  }
+});
+
 client.on('messageReactionRemove', async (reaction, user) => {
   if (user.bot) return;
   if (reaction.partial) {
@@ -380,32 +425,20 @@ client.on('messageReactionRemove', async (reaction, user) => {
 
   const guildId = message.guild.id;
   const config = getConfig(guildId);
-  if (!config.dungeonMessageId) return;
-  if (message.id !== config.dungeonMessageId) return;
+  if (!config.dungeonMessageId || message.id !== config.dungeonMessageId) return;
 
   const emoji = reaction.emoji.name;
   if (emoji !== '✅' && emoji !== '❌') return;
 
   const reactionsData = getReactionsData(guildId);
-  const usersData = getUsersData(guildId);
 
-  // Suppression de la donnée utilisateur si la réaction correspondante est enlevée
-  if (reactionsData[user.id]) {
-    // Si l'utilisateur a encore une autre réaction, on garde
-    // Sinon, supprimer l'entrée
-
-    // Pour simplifier, on supprime l'entrée si cette réaction était la seule:
-    // Ici, l'entrée a un seul booléen, donc on supprime.
-    delete reactionsData[user.id];
-  }
+  // Suppression de la donnée utilisateur
+  delete reactionsData[user.id];
 
   saveReactions();
-
-  // Ne pas supprimer userId de usersData (historique), mais tu peux décider sinon.
-
   updateBotStatus(client);
 
-  // Mettre à jour l'embed
+  // Mettre à jour l'embed avec la date mémorisée
   try {
     const channel = await client.channels.fetch(config.dungeonChannelId);
     if (!channel) return;
@@ -413,10 +446,10 @@ client.on('messageReactionRemove', async (reaction, user) => {
     const msg = await channel.messages.fetch(config.dungeonMessageId);
     if (!msg) return;
 
-    const embed = buildDungeonEmbed(guildId);
+    const embed = buildDungeonEmbed(guildId, config.dungeonDatetime || '');
     await msg.edit({ embeds: [embed] });
   } catch {
-    // Ne rien faire en cas d'erreur
+    // Silencieux
   }
 });
 
