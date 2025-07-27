@@ -12,8 +12,16 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const Parser = require('rss-parser');
-const parser = new Parser();
+const parser = new Parser({
+  customFields: {
+    item: ['guid']
+  },
+  xml2js: {
+    strict: false  // désactive le parsing strict
+  }
+});
 require('dotenv').config({ path: './token.env' });
+console.log (DISCORD_TOKEN = process.env.DISCORD_TOKEN);
 
 // Chargement config + réactions
 const configPath = path.resolve(__dirname, 'config.json');
@@ -56,52 +64,7 @@ const client = new Client({
 client.once('ready', async () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
 
-  // Au démarrage, récupérer et stocker la dernière news si pas défini
-  if (!config.lastNewsId) {
-    try {
-      const feed = await parser.parseURL('https://www.blackdesertonline.com/rss/news.xml');
-      if (feed.items[0]) {
-        config.lastNewsId = feed.items[0].guid;
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-      }
-    } catch (e) {
-      console.error('Erreur au démarrage pour récupérer la dernière news :', e);
-    }
-  }
-
-  // Vérifier toutes les 10 minutes la présence d'une nouvelle news
-  setInterval(checkForNewUpdate, 10 * 60 * 1000);
-});
-
-// Fonction vérification mise à jour BDO RSS
-async function checkForNewUpdate() {
-  if (!config.updatesChannelId) return;
-
-  try {
-    const feed = await parser.parseURL('https://www.blackdesertonline.com/rss/news.xml');
-    const latest = feed.items[0];
-    if (!latest) return;
-
-    if (config.lastNewsId !== latest.guid) {
-      const channel = await client.channels.fetch(config.updatesChannelId);
-      if (!channel) return console.error("Salon updates introuvable.");
-
-      const embed = new EmbedBuilder()
-        .setTitle(latest.title)
-        .setURL(latest.link)
-        .setDescription(latest.contentSnippet || latest.content || '')
-        .setTimestamp(new Date(latest.pubDate))
-        .setColor('#0099ff');
-
-      await channel.send({ embeds: [embed] });
-
-      config.lastNewsId = latest.guid;
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    }
-  } catch (error) {
-    console.error('Erreur lors de la récupération des mises à jour BDO :', error);
-  }
-}
+})
 
 // Définition des commandes slash à déployer
 const commands = [
