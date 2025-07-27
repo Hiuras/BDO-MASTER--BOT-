@@ -422,3 +422,4 @@ client.on('messageReactionRemove', async (reaction, user) => {
 
 // --- Connexion ---
 client.login(process.env.DISCORD_TOKEN);
+const token = process.env.DISCORD_TOKEN;
