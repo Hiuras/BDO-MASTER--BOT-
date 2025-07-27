@@ -11,7 +11,7 @@ const {
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-require('dotenv').config({ path: './token.env' });
+//require('dotenv').config({ path: './token.env' });//
 
 // --- Chemins fichiers ---
 const configPath = path.resolve(__dirname, 'config.json');
