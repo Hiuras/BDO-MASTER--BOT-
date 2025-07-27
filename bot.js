@@ -11,6 +11,8 @@ const {
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const Parser = require('rss-parser');
+const parser = new Parser();
 require('dotenv').config({ path: './token.env' });
 
 // Chargement config + réactions
@@ -51,9 +53,55 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
+
+  // Au démarrage, récupérer et stocker la dernière news si pas défini
+  if (!config.lastNewsId) {
+    try {
+      const feed = await parser.parseURL('https://www.blackdesertonline.com/rss/news.xml');
+      if (feed.items[0]) {
+        config.lastNewsId = feed.items[0].guid;
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      }
+    } catch (e) {
+      console.error('Erreur au démarrage pour récupérer la dernière news :', e);
+    }
+  }
+
+  // Vérifier toutes les 10 minutes la présence d'une nouvelle news
+  setInterval(checkForNewUpdate, 10 * 60 * 1000);
 });
+
+// Fonction vérification mise à jour BDO RSS
+async function checkForNewUpdate() {
+  if (!config.updatesChannelId) return;
+
+  try {
+    const feed = await parser.parseURL('https://www.blackdesertonline.com/rss/news.xml');
+    const latest = feed.items[0];
+    if (!latest) return;
+
+    if (config.lastNewsId !== latest.guid) {
+      const channel = await client.channels.fetch(config.updatesChannelId);
+      if (!channel) return console.error("Salon updates introuvable.");
+
+      const embed = new EmbedBuilder()
+        .setTitle(latest.title)
+        .setURL(latest.link)
+        .setDescription(latest.contentSnippet || latest.content || '')
+        .setTimestamp(new Date(latest.pubDate))
+        .setColor('#0099ff');
+
+      await channel.send({ embeds: [embed] });
+
+      config.lastNewsId = latest.guid;
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    }
+  } catch (error) {
+    console.error('Erreur lors de la récupération des mises à jour BDO :', error);
+  }
+}
 
 // Définition des commandes slash à déployer
 const commands = [
@@ -86,7 +134,15 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName('joke')
-    .setDescription('Raconte une blague')
+    .setDescription('Raconte une blague'),
+  new SlashCommandBuilder()
+    .setName('setupdateschannel')
+    .setDescription('Définit le salon des mises à jour BDO')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Salon de destination pour les mises à jour')
+        .setRequired(true)
+    )
 ].map(cmd => cmd.toJSON());
 
 // Déploiement des commandes slash
@@ -156,6 +212,16 @@ client.on('interactionCreate', async interaction => {
     config.dungeonChannelId = channel.id;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     await interaction.reply(`📌 Channel donjon défini sur : ${channel}`);
+  }
+  else if (commandName === 'setupdateschannel') {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      await interaction.reply({ content: 'Tu dois être admin pour faire ça.', ephemeral: true });
+      return;
+    }
+    const channel = interaction.options.getChannel('channel');
+    config.updatesChannelId = channel.id;
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    await interaction.reply(`📌 Channel mises à jour défini sur : ${channel}`);
   }
   else if (commandName === 'postdungeons') {
     if (!config.dungeonChannelId) {
@@ -237,52 +303,51 @@ async function updateDungeonEmbed(message) {
     const newEmbed = buildDungeonEmbed(datetime);
     await message.edit({ embeds: [newEmbed] });
   } catch (error) {
-    console.error('Erreur mise à jour embed :', error);
+    console.error('Erreur mise à jour embed donjon:', error);
   }
 }
 
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
-  if (!reaction.message.guild) return;
+
+  // Si message donjon
   if (reaction.message.id !== config.dungeonMessageId) return;
+  if (reaction.emoji.name !== '✅' && reaction.emoji.name !== '❌') return;
 
-  if (reaction.emoji.name === '✅' || reaction.emoji.name === '❌') {
-    // Stocke uniquement la dernière réaction valide de l'utilisateur
-    reactionsData[user.id] = { canDoDungeons: reaction.emoji.name === '✅' };
-    saveReactions();
+  // Mettre à jour le statut du joueur
+  reactionsData[user.id] = { canDoDungeons: reaction.emoji.name === '✅' };
+  saveReactions();
 
-    // Supprimer l'autre réaction si elle existe pour éviter les doublons
-    const otherEmoji = reaction.emoji.name === '✅' ? '❌' : '✅';
-    const userReactions = reaction.message.reactions.cache.filter(r => r.users.cache.has(user.id) && r.emoji.name === otherEmoji);
+  // Supprimer l'autre réaction si elle existe (exclu)
+  try {
+    const userReactions = reaction.message.reactions.cache.filter(r => r.users.cache.has(user.id));
     for (const r of userReactions.values()) {
-      try {
+      if (r.emoji.name !== reaction.emoji.name) {
         await r.users.remove(user.id);
-      } catch {}
+      }
     }
-
-    await updateDungeonEmbed(reaction.message);
+  } catch (err) {
+    console.error('Erreur suppression réaction:', err);
   }
+
+  // Mettre à jour l'embed donjon
+  updateDungeonEmbed(reaction.message);
 });
 
 client.on('messageReactionRemove', async (reaction, user) => {
   if (user.bot) return;
-  if (!reaction.message.guild) return;
-  if (reaction.message.id !== config.dungeonMessageId) return;
 
-  if (reaction.emoji.name === '✅' || reaction.emoji.name === '❌') {
-    // Retirer la donnée de cet utilisateur si il n'a plus de réaction valide
-    const msg = reaction.message;
-    // Vérifier s'il a encore une réaction valide
-    const stillHasValidReaction = msg.reactions.cache.some(r => 
-      (r.emoji.name === '✅' || r.emoji.name === '❌') && r.users.cache.has(user.id)
-    );
-    if (!stillHasValidReaction) {
-      delete reactionsData[user.id];
-      saveReactions();
-      await updateDungeonEmbed(msg);
-    }
+  if (reaction.message.id !== config.dungeonMessageId) return;
+  if (reaction.emoji.name !== '✅' && reaction.emoji.name !== '❌') return;
+
+  // Retirer la donnée de réaction
+  if (reactionsData[user.id]) {
+    delete reactionsData[user.id];
+    saveReactions();
   }
+
+  updateDungeonEmbed(reaction.message);
 });
 
-// Connexion
+// Connexion du bot
 client.login(process.env.DISCORD_TOKEN);

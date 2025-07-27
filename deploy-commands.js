@@ -3,7 +3,7 @@ require('dotenv').config({ path: './token.env' });
 
 const commands = [
   new SlashCommandBuilder()
- .setName('postdungeons')
+    .setName('postdungeons')
     .setDescription('Poste la liste des donjons avec réactions.')
     .addStringOption(option =>
       option.setName('datetime')
@@ -16,7 +16,8 @@ const commands = [
     .addChannelOption(option =>
       option.setName('channel')
         .setDescription('Salon de destination')
-        .setRequired(true)),
+        .setRequired(true)
+    ),
   new SlashCommandBuilder()
     .setName('dungeonstatus')
     .setDescription('Affiche qui peut faire les donjons'),
@@ -26,10 +27,19 @@ const commands = [
     .addIntegerOption(option =>
       option.setName('nombre')
         .setDescription('Nombre de messages à supprimer')
-        .setRequired(true)),
+        .setRequired(true)
+    ),
   new SlashCommandBuilder()
     .setName('joke')
-    .setDescription('Raconte une blague')
+    .setDescription('Raconte une blague'),
+  new SlashCommandBuilder()
+    .setName('setupdateschannel')
+    .setDescription('Définit le salon des mises à jour BDO')
+    .addChannelOption(option =>
+      option.setName('channel')
+        .setDescription('Salon de destination pour les mises à jour')
+        .setRequired(true)
+    )
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
