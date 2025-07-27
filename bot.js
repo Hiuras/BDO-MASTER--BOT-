@@ -43,11 +43,36 @@ function saveReactions() {
   fs.writeFileSync(reactionsFile, JSON.stringify(reactionsData, null, 2));
 }
 
+let usersData = new Set();
+const usersFile = path.resolve(__dirname, 'users.json');
+
+try {
+  const usersJson = fs.readFileSync(usersFile);
+  usersData = new Set(JSON.parse(usersJson));
+} catch {
+  usersData = new Set();
+}
+
+function saveUsers() {
+  fs.writeFileSync(usersFile, JSON.stringify([...usersData], null, 2));
+}
+
+function updateBotStatus() {
+  const totalUsers = usersData.size;
+  client.user.setPresence({
+    activities: [{
+      name: `${totalUsers} utilisateurs 🧙`,
+      type: 3 // "Écoute" — tu peux aussi mettre 0 = "Joue à", 2 = "Regarde"
+    }],
+    status: 'online'
+  });
+}
+
 const dungeons = [
-  { name: 'Atoraxxion: Vahmalkea', minGS: 250 },
-  { name: 'Atoraxxion: Sycrakea', minGS: 260 },
-  { name: 'Atoraxxion: Yolunakea', minGS: 270 },
-  { name: "Atoraxxion: Erethea's Limbo", minGS: 280 }
+  { name: 'Atoraxxion: Vahmalkea'},
+  { name: 'Atoraxxion: Sycrakea'},
+  { name: 'Atoraxxion: Yolunakea'},
+  { name: "Atoraxxion: Orzekea" }
 ];
 
 // Initialisation du client Discord
@@ -63,7 +88,7 @@ const client = new Client({
 
 client.once('ready', async () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
-
+  updateBotStatus();
 })
 
 // Définition des commandes slash à déployer
@@ -134,23 +159,46 @@ function buildDungeonEmbed(datetime = '') {
     else if (entry.canDoDungeons === false) cantUsers.push(`<@${userId}>`);
   }
 
-  let participantsText = '';
-  if (canUsers.length > 0) participantsText += `✅ Peuvent faire (${canUsers.length}) :\n${canUsers.join(', ')}\n\n`;
-  if (cantUsers.length > 0) participantsText += `❌ Ne peuvent pas faire (${cantUsers.length}) :\n${cantUsers.join(', ')}\n\n`;
+  // Texte des donjons
+  const donjonLines = [
+    '📘 **1. Vahmalkea** *(Atoraxxion - Valmakea)*',
+    '💧 **2. Sycrakea** *(Atoraxxion - Sycrakea)*',
+    '🔥 **3. Yolunakea** *(Atoraxxion - Yolunkea)*',
+    '⚙️ **4. Orzekea** *(Atoraxxion - Orzekea)*'
+  ].join('\n');
 
-  const baseDescription = dungeons.map((d, i) => `${i + 1}. ${d.name} (Min GS: ${d.minGS})`).join('\n');
-  const fullDescription = `@Atoraxxion\n${baseDescription}` + (datetime ? `\n\n🕒 Date/Heure : ${datetime}` : '');
+  // Ping du rôle Atoraxion
+  const rolePing = `<@&1275693513085943862>`; // Remplace ROLE_ID_ATORAXION par l’ID réel du rôle
 
-  return new EmbedBuilder()
-    .setTitle('📘 Tableau des Donjons - Réagis avec ✅ ou ❌')
-    .setDescription(fullDescription + (participantsText ? `\n**Participants :**\n${participantsText}` : ''))
-    .setColor('#0099ff')
-    .setFooter({ text: 'Réagis pour indiquer ta dispo' });
+  // Participants
+  const participantsText =
+    `__**📋 Participants :**__\n\n` +
+    `✅ **Disponibles** (${canUsers.length})\n${canUsers.length ? canUsers.join(', ') : 'Aucun'}\n\n` +
+    `❌ **Indisponibles** (${cantUsers.length})\n${cantUsers.length ? cantUsers.join(', ') : 'Aucun'}`;
+
+  // Date
+  const dateLine = datetime ? `🕒 **Date & Heure :** \`${datetime}\`\n` : '';
+
+  // Construction de l'embed
+  const embed = new EmbedBuilder()
+    .setTitle('🏰 Donjons Atoraxxion - Planification')
+    .setColor('#2F3136')
+    .setDescription(
+      `${rolePing}\n\n__**📌 Liste des Donjons :**__\n${donjonLines}\n\n${dateLine}${participantsText}`
+    )
+    .setFooter({ text: 'Réagis avec ✅ si tu es dispo ou ❌ si tu ne l’es pas.' });
+
+  return embed;
 }
+
 
 // Interaction / Commandes
 client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
+
+usersData.add(interaction.user.id);
+saveUsers();
+updateBotStatus();
 
   const { commandName } = interaction;
 
@@ -272,6 +320,10 @@ async function updateDungeonEmbed(message) {
 
 client.on('messageReactionAdd', async (reaction, user) => {
   if (user.bot) return;
+
+  usersData.add(user.id);
+saveUsers();
+updateBotStatus();
 
   // Si message donjon
   if (reaction.message.id !== config.dungeonMessageId) return;
