@@ -185,6 +185,14 @@ const commands = [
       option.setName('channel')
         .setDescription('Salon de destination pour les mises à jour')
         .setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName('setrole')
+    .setDescription('Définit le rôle Atoraxxion à pinger dans l’embed.')
+    .addRoleOption(option =>
+      option.setName('role')
+        .setDescription('Rôle à utiliser pour les donjons')
+        .setRequired(true)
     )
 ].map(cmd => cmd.toJSON());
 
@@ -216,6 +224,7 @@ client.on('interactionCreate', async interaction => {
   const config = getConfig(guildId);
   const reactionsData = getReactionsData(guildId);
   const usersData = getUsersData(guildId);
+  
 
   const { commandName } = interaction;
 
@@ -240,6 +249,17 @@ client.on('interactionCreate', async interaction => {
   if (!member.permissionsIn(interaction.channel).has(PermissionsBitField.Flags.Administrator)) {
     await interaction.reply({ content: 'Tu dois être admin pour faire ça.', ephemeral: true });
     return;
+  }
+
+    if (commandName === 'setrole') {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+      await interaction.reply({ content: 'Tu dois être admin pour faire ça.', ephemeral: true });
+      return;
+    }
+    const role = interaction.options.getRole('role');
+    config.atoraxxionRoleId = role.id;
+    saveConfigs();
+    await interaction.reply(`📌 Rôle Atoraxxion défini sur ${role.toString()}`);
   }
 
   const channel = interaction.options.getChannel('channel');
