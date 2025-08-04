@@ -39,7 +39,10 @@ const commands = [
       option.setName('channel')
         .setDescription('Salon de destination pour les mises à jour')
         .setRequired(true)
-    )
+    ),
+  new SlashCommandBuilder()
+  .setName('SetRole')
+  .setDescription ('Ajoute un role automatique'),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -56,3 +59,4 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     console.error('Erreur de déploiement :', error);
   }
 })();
+
