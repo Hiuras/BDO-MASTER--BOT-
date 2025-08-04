@@ -41,8 +41,8 @@ const commands = [
         .setRequired(true)
     ),
   new SlashCommandBuilder()
-  .setName('SetRole')
-  .setDescription ('Ajoute un role automatique'),
+  .setName('SetRoleAuto')
+  .setDescription ('Ajoute un role automatiquement via une réaction'),
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -59,4 +59,5 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     console.error('Erreur de déploiement :', error);
   }
 })();
+
 
