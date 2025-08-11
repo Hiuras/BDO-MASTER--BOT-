@@ -45,7 +45,7 @@ configsByGuild = loadJSON(configPath, {});
 reactionsByGuild = loadJSON(reactionsFile, {});
 const rawUsers = loadJSON(usersFile, {});
 twitchStreamersByGuild = loadJSON(twitchDataFile, {});
-bdoSeen = loadJSON(bdoUpdatesFile, { seen: [] });
+bdoSeen = loadJSON(bdosFile, { seen: [] });
 
 // Convertir listes en Set pour usersByGuild
 for (const guildId in rawUsers) {
@@ -90,7 +90,7 @@ function saveTwitchData() {
 }
 
 function saveBDOSeen() {
-  fs.writeFileSync(bdoUpdatesFile, JSON.stringify(bdoSeen, null, 2));
+  fs.writeFileSync(bdosFile, JSON.stringify(bdoSeen, null, 2));
 }
 
 // --- Mise à jour du statut du bot par nombre total d'utilisateurs (sur tous les serveurs) ---
@@ -100,13 +100,17 @@ function updateBotStatus(client) {
     totalUsers += usersByGuild[guildId].size;
   }
   if (client && client.user && client.user.setPresence) {
-    client.user.setPresence({
-      activities: [{
-        name: `${totalUsers} utilisateurs 🧙`,
-        type: 3 // "Écoute"
-      }],
-      status: 'online'
-    }).catch(() => {});
+    try {
+      client.user.setPresence({
+        activities: [{
+          name: `${totalUsers} utilisateurs 🧙`,
+          type: 3 // "Écoute"
+        }],
+        status: 'online'
+      });
+    } catch (error) {
+      console.error('Erreur lors du setPresence:', error);
+    }
   }
 }
 
@@ -798,3 +802,4 @@ async function checkBDOUpdates() {
 client.login(process.env.DISCORD_TOKEN).catch(err => {
   console.error('Erreur login Discord:', err);
 });
+
