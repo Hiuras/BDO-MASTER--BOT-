@@ -16,15 +16,6 @@ const path = require('path');
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-// --- Chemins fichiers ---
-const configPath = path.resolve(__dirname, 'config.json');
-const reactionsFile = path.resolve(__dirname, 'reactionsData.json');
-const usersFile = path.resolve(__dirname, 'users.json');
-const twitchDataFile = path.resolve(__dirname, 'twitchStreamers.json');
-const bdoUpdatesFile = path.resolve(__dirname, 'BDOfiles', 'bdoUpdates.json');
-
-bdoSeen = loadJSON(bdoUpdatesFile, { seen: [] });
-
 // --- Données en mémoire ---
 let configsByGuild = {};
 let reactionsByGuild = {};
@@ -43,11 +34,19 @@ function loadJSON(filePath, defaultValue) {
   }
 }
 
+// --- Chemins fichiers ---
+const configPath = path.resolve(__dirname, 'config.json');
+const reactionsFile = path.resolve(__dirname, 'reactionsData.json');
+const usersFile = path.resolve(__dirname, 'users.json');
+const twitchDataFile = path.resolve(__dirname, 'twitchStreamers.json');
+const bdoUpdatesFile = path.resolve(__dirname, 'BDOfiles', 'bdoUpdates.json');
+
+// --- Chargement des données depuis fichiers ---
 configsByGuild = loadJSON(configPath, {});
 reactionsByGuild = loadJSON(reactionsFile, {});
 const rawUsers = loadJSON(usersFile, {});
 twitchStreamersByGuild = loadJSON(twitchDataFile, {});
-bdoSeen = loadJSON(bdosFile, { seen: [] });
+bdoSeen = loadJSON(bdoUpdatesFile, { seen: [] });
 
 // Convertir listes en Set pour usersByGuild
 for (const guildId in rawUsers) {
@@ -804,5 +803,6 @@ async function checkBDOUpdates() {
 client.login(process.env.DISCORD_TOKEN).catch(err => {
   console.error('Erreur login Discord:', err);
 });
+
 
 
