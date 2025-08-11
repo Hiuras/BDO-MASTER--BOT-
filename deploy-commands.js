@@ -1,6 +1,8 @@
+// deploy-commands.js
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 require('dotenv').config({ path: './token.env' });
 
+// Définition des commandes
 const commands = [
   new SlashCommandBuilder()
     .setName('postdungeons')
@@ -47,50 +49,74 @@ const commands = [
     ),
 
   new SlashCommandBuilder()
-    .setName('setroleauto')
-    .setDescription('Ajoute un rôle automatiquement via une réaction')
+    .setName('setrole')
+    .setDescription('Définit le rôle Atoraxxion à pinger dans l’embed.')
     .addRoleOption(option =>
       option.setName('role')
-        .setDescription('Le rôle à attribuer automatiquement')
+        .setDescription('Rôle à utiliser pour les donjons')
         .setRequired(true)
     ),
 
-  // Commandes Twitch
+  // --- COMMANDES TWITCH ---
   new SlashCommandBuilder()
-    .setName('settwitchchannel')
-    .setDescription('Définit le salon pour les notifications Twitch')
+    .setName('settwitch')
+    .setDescription('Ajoute un streamer Twitch à surveiller')
+    .addStringOption(option =>
+      option.setName('twitchname')
+        .setDescription('Nom du streamer Twitch (login)')
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('removetwitch')
+    .setDescription('Supprime un streamer Twitch suivi')
+    .addStringOption(option =>
+      option.setName('twitchname')
+        .setDescription('Nom du streamer Twitch à retirer')
+        .setRequired(true)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('showtwitch')
+    .setDescription('Liste tous les streamers suivis'),
+
+  new SlashCommandBuilder()
+    .setName('settwitchrole')
+    .setDescription('Définit le rôle à mentionner lors des annonces Twitch')
+    .addRoleOption(option =>
+      option.setName('role')
+        .setDescription('Rôle à mentionner')
+        .setRequired(true)
+    ),
+
+  // --- BDO UPDATES ---
+  new SlashCommandBuilder()
+    .setName('setbdoupdatechannel')
+    .setDescription('Définit le salon pour les patch notes BDO (FR)')
     .addChannelOption(option =>
       option.setName('channel')
-        .setDescription('Salon pour notifications Twitch')
+        .setDescription('Salon de destination')
         .setRequired(true)
     ),
 
   new SlashCommandBuilder()
-    .setName('checktwitchlive')
-    .setDescription('Vérifie si le stream Twitch est en live'),
+    .setName('showbdoupdatesconfig')
+    .setDescription('Affiche la configuration BDO updates pour ce serveur')
+]
+.map(cmd => cmd.toJSON());
 
-  // Commande manuelle de mise à jour BDO
-  new SlashCommandBuilder()
-    .setName('updatebdo')
-    .setDescription('Publie une mise à jour BDO dans le salon dédié')
-    .addStringOption(option =>
-      option.setName('texte')
-        .setDescription('Texte de la mise à jour')
-        .setRequired(true)
-    ),
-].map(command => command.toJSON());
-
+// Création client REST
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log('Déploiement des commandes slash...');
+    console.log('Déploiement des commandes slash sur le serveur de test...');
     await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
-      { body: commands },
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+      { body: commands }
     );
-    console.log('Commandes déployées avec succès.');
+    console.log('✅ Commandes déployées avec succès !');
   } catch (error) {
-    console.error('Erreur de déploiement :', error);
+    console.error('❌ Erreur de déploiement :', error);
   }
 })();
