@@ -1,8 +1,6 @@
-// deploy-commands.js
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
-require('dotenv').config({ path: './token.env' });
+require('dotenv').config();
 
-// Définition des commandes
 const commands = [
   new SlashCommandBuilder()
     .setName('postdungeons')
@@ -57,7 +55,7 @@ const commands = [
         .setRequired(true)
     ),
 
-  // --- COMMANDES TWITCH ---
+  // ---- TWITCH COMMANDS ----
   new SlashCommandBuilder()
     .setName('settwitch')
     .setDescription('Ajoute un streamer Twitch à surveiller')
@@ -89,7 +87,7 @@ const commands = [
         .setRequired(true)
     ),
 
-  // --- BDO UPDATES ---
+  // ---- BDO UPDATES ----
   new SlashCommandBuilder()
     .setName('setbdoupdatechannel')
     .setDescription('Définit le salon pour les patch notes BDO (FR)')
@@ -102,21 +100,19 @@ const commands = [
   new SlashCommandBuilder()
     .setName('showbdoupdatesconfig')
     .setDescription('Affiche la configuration BDO updates pour ce serveur')
-]
-.map(cmd => cmd.toJSON());
+].map(cmd => cmd.toJSON());
 
-// Création client REST
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log('Déploiement des commandes slash sur le serveur de test...');
+    console.log('Déploiement des commandes globales...');
     await rest.put(
-      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+      Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
-    console.log('✅ Commandes déployées avec succès !');
+    console.log('Commandes globales déployées avec succès.');
   } catch (error) {
-    console.error('❌ Erreur de déploiement :', error);
+    console.error('Erreur lors du déploiement global :', error);
   }
 })();
